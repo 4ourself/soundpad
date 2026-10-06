@@ -1,0 +1,6 @@
+numpy>=1.24
+sounddevice>=0.4.6
+soundfile>=0.12.1
+soxr>=0.3.7
+av>=11
+pynput>=1.7.6

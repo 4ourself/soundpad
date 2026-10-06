@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+.pytest_cache/
+*.bak
+*.tmp
