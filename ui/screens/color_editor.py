@@ -63,7 +63,7 @@ class ColorEditor(BaseScreen):
         self._commit()
 
     def _commit(self) -> None:
-        if self.target == "backdrop":
+        if self.target == "backdrop" and self.app.backdrop_mode() != "glass":
             for s in self.paint.stops:
                 s[1] = 100
         self.app.apply_paint(self.target, self.paint)
@@ -137,7 +137,7 @@ class ColorEditor(BaseScreen):
             if self.multi:
                 r += ["stop", "add", "del"]
             r += ["hue", "sat", "val", "red", "green", "blue", "hex"]
-        if self.target != "backdrop":
+        if self.target != "backdrop" or self.app.backdrop_mode() == "glass":
             r.append("alpha")
         r.append("reset")
         return r

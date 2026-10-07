@@ -43,7 +43,7 @@ DEFAULTS: dict = {
         "fps": 30,
         "accent_paint": {"mode": "solid", "stops": [["#00D7FF", 100]], "speed": 50},   # used when accent = "custom"
         "graph_paint": {"mode": "zones", "stops": [["#00D787", 100], ["#FFD700", 100], ["#FF5F5F", 100]], "speed": 50},
-        "backdrop": "terminal",      # terminal (leave the background alone) | custom (paint ui.backdrop_paint)
+        "backdrop": "terminal",      # terminal (leave it alone, blur stays) | glass (translucent colour over it) | custom (opaque)
         "backdrop_paint": {"mode": "solid", "stops": [["#171A22", 100]], "speed": 50},
         "borders": "rounded",        # rounded | square
         "splash": True,              # show the logo title screen at start

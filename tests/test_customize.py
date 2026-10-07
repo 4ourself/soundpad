@@ -841,3 +841,143 @@ def test_editor_field_marker_follows_hsv(rig):
 
 def row_(ed, name):
     ed.sel.idx = ed.rows().index(name)
+
+
+# ------------------------------------------------------------------ glass backdrop (blur / acrylic stays visible)
+def _glass(app, stops, mode="glass"):
+    from ui.colors import Paint
+    app.cfg.set("ui.colors", "true")
+    app.cfg.set("ui.backdrop", mode)
+    app.cfg.set("ui.backdrop_paint", Paint("gradient" if len(stops) > 1 else "solid", stops).to_dict())
+    app.rebuild_theme()
+
+
+def _bgs(app):
+    th = app.theme
+    return [th.style_rgb(s)[1] for row in app.cv.st for s in row]
+
+
+def test_glass_never_paints_a_background_and_alpha_is_coverage(rig):
+    app = rig
+    for alpha, glyph in ((100, "█"), (70, "▓"), (50, "▒"), (20, "░")):
+        _glass(app, [["#102040", alpha]])
+        app.splash = False
+        frame(app)
+        blanks = [c for row in app.cv.ch for c in row]
+        assert blanks.count(glyph) > 1000, (alpha, glyph)
+        assert (16, 32, 64) not in _bgs(app)                           # the terminal's own (blurred) background stays
+        th = app.theme
+        fgs = {th.style_rgb(s)[0] for row, srow in zip(app.cv.ch, app.cv.st) for c, s in zip(row, srow) if c == glyph}
+        assert fgs == {(16, 32, 64)}
+    _glass(app, [["#102040", 3]])                                      # almost nothing: pure terminal background
+    frame(app)
+    assert not any(c in "░▒▓█" for row in app.cv.ch for c in row)
+
+
+def test_glass_gradient_fades_to_the_blur(rig):
+    app = rig
+    _glass(app, [["#8040FF", 80], ["#8040FF", 0]])
+    app.splash = False
+    lines = frame(app)
+    top = sum(c in "░▒▓█" for c in lines[1])
+    bottom = sum(c in "░▒▓█" for c in lines[-2])
+    assert top > 40 and bottom == 0
+    assert any(lines[y].count("▓") > 20 for y in range(1, 6))        # dense at the top, thinner further down
+    dens = [sum(c in "▒▓█" for c in ln) for ln in lines[1:-1]]
+    assert dens[0] >= dens[len(dens) // 2] >= dens[-1]
+
+
+def test_glass_leaves_text_and_selection_alone(rig):
+    app = rig
+    _glass(app, [["#102040", 60]])
+    app.splash = False
+    app.goto("home")
+    lines = frame(app)
+    txt = "\n".join(lines)
+    assert "Customize" in txt and "Exit" in txt and ("voicer" in txt or "soundpad" in txt)
+    th = app.theme
+    assert any(b is not None for b in _bgs(app))                        # the focus bar keeps its own colour
+
+
+def test_glass_is_skipped_in_ascii_and_mono(rig):
+    app = rig
+    _glass(app, [["#102040", 60]])
+    app.cfg.set("ui.charset", "ascii")
+    app.rebuild_theme()
+    frame(app)
+    assert all(ord(c) < 128 for row in app.cv.ch for c in row)
+    app.cfg.set("ui.charset", "unicode")
+    app.cfg.set("ui.colors", "mono")
+    app.rebuild_theme()
+    frame(app)
+    assert not any(c in "░▒▓█" for row in app.cv.ch for c in row)
+
+
+def test_terminal_mode_paints_nothing(rig):
+    app = rig
+    _glass(app, [["#102040", 60]], mode="terminal")
+    frame(app)
+    assert not any(c in "░▒▓█" for row in app.cv.ch for c in row)
+    th = app.theme
+    assert all(th.style_rgb(s)[1] is None for row in app.cv.st for s in row[:5])      # no painted background at all
+    assert app.theme.backdrop_paint is None and app.base_rgb() == (12, 12, 12)
+
+
+def test_glass_diff_render_matches_canvas(rig):
+    app = rig
+    _glass(app, [["#8040FF", 70], ["#10C0FF", 10]])
+    out = []
+    app.term.write = out.append
+    screen = pyte.Screen(80, 24)
+    stream = pyte.Stream(screen)
+    for pg in ("home", page(app), "customize", "settings"):
+        app.goto(pg)
+        app.update()
+        app.render()
+        stream.feed("".join(out))
+        out.clear()
+        assert screen.display == app.cv.text_lines()
+
+
+def test_backdrop_choice_switches_modes_and_starts_translucent(rig):
+    from ui.colors import Paint
+    app = rig
+    app.apply_paint("backdrop", Paint("solid", [["#202040", 100]]))            # opaque custom backdrop
+    assert app.cfg.get("ui.backdrop") == "custom"
+    items = {i.label: i for i in app.screens["customize"]._items("Colors")}
+    assert items["Backdrop"].options == ["terminal", "glass", "custom"]
+    items["Backdrop"].set("glass")
+    assert app.backdrop_mode() == "glass" and app.theme.glass
+    assert app.cfg.get("ui.backdrop_paint")["stops"][0][1] == 45               # would hide the blur at 100: made translucent
+    assert app.base_rgb() == (12, 12, 12)                                      # accent alpha still mixes with the terminal bg
+    items["Backdrop"].set("custom")
+    assert app.paint_of("backdrop").stops[0][1] == 100 and not app.theme.glass
+    items["Backdrop"].set("terminal")
+    assert app.theme.backdrop_paint is None
+
+
+def test_editor_alpha_row_only_for_glass_backdrop(rig):
+    app = rig
+    app.cfg.set("ui.backdrop", "custom")
+    ed = open_editor(app, "backdrop")
+    assert "alpha" not in ed.rows()
+    app.pop()
+    app.cfg.set("ui.backdrop", "glass")
+    ed = open_editor(app, "backdrop")
+    assert "alpha" in ed.rows()
+    ed.sel.idx = ed.rows().index("alpha")
+    before = ed.paint.stops[0][1]
+    press(app, "left", "left")
+    assert app.cfg.get("ui.backdrop") == "glass" and app.cfg.get("ui.backdrop_paint")["stops"][0][1] < before
+    assert "Alpha" in "\n".join(frame(app))
+
+
+def test_windows_defaults_to_truecolor(monkeypatch):
+    from ui import theme
+    for k in ("WT_SESSION", "COLORTERM", "NO_COLOR", "TERM"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(theme, "_windows_truecolor", lambda: True)
+    assert theme.detect_depth("auto") == "true"                              # not 256: no banded gradients
+    monkeypatch.setattr(theme, "_windows_truecolor", lambda: False)
+    assert theme.detect_depth("auto") != "true"
+    assert theme.detect_depth("256") == "256"

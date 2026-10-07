@@ -50,13 +50,20 @@ def detect_unicode(setting: str = "auto") -> bool:
     return os.environ.get("TERM") != "linux"
 
 
+def _windows_truecolor() -> bool:
+    """Every Windows 10 console since build 15063 (and Windows Terminal) draws 24-bit colour once VT is on."""
+    if os.name != "nt":
+        return False
+    return getattr(getattr(sys, "getwindowsversion", lambda: None)(), "build", 0) >= 15063
+
+
 def detect_depth(setting: str = "auto") -> str:
     if setting in ("true", "256", "16", "mono"):
         return setting
     if os.environ.get("NO_COLOR"):
         return "mono"
     ct = os.environ.get("COLORTERM", "").lower()
-    if ct in ("truecolor", "24bit") or os.environ.get("WT_SESSION"):      # Windows Terminal sets WT_SESSION
+    if ct in ("truecolor", "24bit") or os.environ.get("WT_SESSION") or _windows_truecolor():   # WT sets WT_SESSION
         return "true"
     if os.name == "nt" or "256" in os.environ.get("TERM", "") or ct:
         return "256"
@@ -77,7 +84,7 @@ class Theme:
     """
 
     def __init__(self, accent="cyan", depth: str = "256", unicode_ok: bool = True, graph: Paint | None = None,
-                 backdrop: Paint | None = None, rounded: bool = True):
+                 backdrop: Paint | None = None, rounded: bool = True, glass: bool = False):
         self.depth = depth
         self.rounded = rounded and unicode_ok
         self.g = Glyphs({**UNICODE, **ROUND} if self.rounded else UNICODE if unicode_ok else ASCII)
@@ -87,13 +94,16 @@ class Theme:
         self._index: dict[tuple, int] = {self._styles[0]: 0}
         self._sgr: dict[int, str] = {}
         self._fade: dict[tuple, int] = {}
-        self.configure(accent, graph, backdrop)
+        self.configure(accent, graph, backdrop, glass)
 
     # ------------------------------------------------------------ paints
-    def configure(self, accent, graph: Paint | None = None, backdrop: Paint | None = None) -> None:
+    def configure(self, accent, graph: Paint | None = None, backdrop: Paint | None = None,
+                  glass: bool = False) -> None:
         """(Re)build the named styles from the accent + graph (+ optional painted backdrop) paints.
         Safe to call while running."""
         self.backdrop_paint = backdrop
+        self.glass = bool(glass and backdrop is not None)      # translucent: shade glyphs, terminal bg stays
+        self._glass_sid: dict[int, int] = {}
         self._bgvar: dict[tuple, int] = {}
         if isinstance(accent, str):
             accent = preset_paint(accent if accent in PRESET_ACCENTS else "cyan")
@@ -188,7 +198,9 @@ class Theme:
         p, bd = self.accent_paint, self.backdrop_paint
         w, h = cv.w, cv.h
         acc = self.accent_moves and w >= 2
-        bd = bd if self.depth != "mono" else None
+        glass = self.glass and self.depth != "mono" and self.unicode
+        bd = bd if (self.depth != "mono" and not self.glass) else None
+        gl = self._glass_rows(h) if glass else None
         shift = int(p.phase_at(self.t) * STEPS) if p.mode == "rainbow" else 0
         qs = [((x * STEPS) // w + shift) % STEPS if p.mode == "rainbow" else (x * (STEPS - 1)) // (w - 1)
               for x in range(w)] if acc else None
@@ -196,8 +208,19 @@ class Theme:
         if bd is not None and bd.effective_mode() == "gradient" and h > 1:
             rq = [(y * (STEPS - 1)) // (h - 1) for y in range(h)]
         tpl, var, bgv = self._tpl, self._variants, self._bgvar
+        styles = self._styles
         for y, row in enumerate(cv.st):
             bq = rq[y]
+            if gl is not None and gl[y][0]:
+                glyph, gsid = gl[y]
+                chrow = cv.ch[y]
+                orig = chrow[:]                      # cells next to text stay clear, so words stay easy to read
+                for x in range(w):
+                    if orig[x] == " " and (x == 0 or orig[x - 1] == " ") and (x == w - 1 or orig[x + 1] == " "):
+                        st = styles[row[x]]
+                        if st[1] is None and not st[4]:
+                            chrow[x] = glyph
+                            row[x] = gsid
             for x in range(w):
                 s = row[x]
                 if acc and s in tpl:
@@ -212,6 +235,25 @@ class Theme:
                     if v is None:
                         v = bgv[key] = self._with_bg(s, bq)
                     row[x] = v
+
+    GLASS_GLYPHS = ((88, "\u2588"), (62, "\u2593"), (37, "\u2592"), (8, "\u2591"))      # alpha >= x -> glyph (coverage)
+
+    def _glass_rows(self, h: int) -> list:
+        """Per row: (shade glyph, style) so that the cell is covered by `alpha` percent of the backdrop colour and
+        the rest stays the terminal's own (blurred) background. Only blank cells are touched."""
+        bd = self.backdrop_paint
+        grad = bd.effective_mode() == "gradient" and h > 1
+        out = []
+        for y in range(h):
+            q = (y * (STEPS - 1)) // (h - 1) if grad else 0
+            rgb, a = bd.rgba_at(q / (STEPS - 1) if grad else 0.0)
+            glyph = next((g for lim, g in self.GLASS_GLYPHS if a >= lim), "")
+            key = (rgb, glyph)
+            sid = self._glass_sid.get(key) if glyph else 0
+            if glyph and sid is None:
+                sid = self._glass_sid[key] = self.style(rgb)
+            out.append((glyph, sid))
+        return out
 
     def backdrop_rgb(self, q: int = 0):
         bd = self.backdrop_paint

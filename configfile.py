@@ -20,7 +20,7 @@ NEVER_SECTIONS = {"effects", "presets"}                                        #
 CHOICES = {
     "ui.charset": ("auto", "unicode", "ascii"),
     "ui.colors": ("auto", "true", "256", "16", "mono"),
-    "ui.backdrop": ("terminal", "custom"),
+    "ui.backdrop": ("terminal", "glass", "custom"),
     "ui.borders": ("rounded", "square"),
     "ui.logo_glow": ("off", "sometimes", "always"),
     "ui.graph_position": ("left", "center", "right"),

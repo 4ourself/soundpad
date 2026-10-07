@@ -41,6 +41,15 @@ class CustomizeScreen(SettingsScreen):
                     return cfg.get("ui.accent")
                 return {"solid": f"solid {pt.stops[0][0]}", "rainbow": "rainbow"}.get(m, f"{m} - {len(pt.stops)} colours")
 
+            def backdrop_changed():
+                if cfg.get("ui.backdrop") == "glass":          # an opaque colour would hide the blur: start translucent
+                    d = cfg.get("ui.backdrop_paint") or {}
+                    stops = d.get("stops") or []
+                    if stops and all(len(s) > 1 and s[1] >= 95 for s in stops):
+                        d["stops"] = [[s[0], 45] for s in stops]
+                        cfg.set("ui.backdrop_paint", d)
+                app.refresh_paints()
+
             def reset_colors():
                 from config import DEFAULTS
                 d = DEFAULTS["ui"]
@@ -55,10 +64,11 @@ class CustomizeScreen(SettingsScreen):
                             PRESETS + ["custom"], app.refresh_paints),
                 Item("button", "Volume graph colors", "Meters and waveform: zones, solid, gradient or rainbow.",
                      get=lambda: describe("graph"), press=lambda: app.open_colors("graph")),
-                choice_item("Backdrop", "terminal = keep your terminal's background. custom = paint your own; Alpha mixes with it.",
-                            "ui.backdrop", ["terminal", "custom"], app.refresh_paints),
-                Item("button", "Backdrop color", "Background colour (solid or top-to-bottom gradient).",
-                     get=lambda: describe("backdrop") if cfg.get("ui.backdrop") == "custom" else "terminal",
+                choice_item("Backdrop", "terminal = nothing painted, your blur / acrylic stays. glass = colour fades over the "
+                            "blur (uses Alpha). custom = opaque background.",
+                            "ui.backdrop", ["terminal", "glass", "custom"], backdrop_changed),
+                Item("button", "Backdrop color", "Backdrop colour: solid or top-to-bottom gradient. In glass mode Alpha = how much it covers.",
+                     get=lambda: describe("backdrop") if app.backdrop_mode() != "terminal" else "terminal",
                      press=lambda: app.open_colors("backdrop")),
                 Item("button", "Reset colors", "Back to the default colors.", get=lambda: "", press=reset_colors),
                 choice_item("Color mode", "auto / true (24-bit) / 256 / 16 / mono. Custom colours need true or 256.", "ui.colors",

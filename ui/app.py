@@ -104,7 +104,8 @@ class App:
     def _make_theme(self) -> Theme:
         c = self.cfg
         return Theme(self.paint_of("accent"), detect_depth(c.get("ui.colors")), detect_unicode(c.get("ui.charset")),
-                     self.paint_of("graph"), self.backdrop_paint(), c.get("ui.borders") != "square")
+                     self.paint_of("graph"), self.backdrop_paint(), c.get("ui.borders") != "square",
+                     self.backdrop_mode() == "glass")
 
     def default_paint(self, target: str) -> Paint:
         if target == "graph":
@@ -114,19 +115,27 @@ class App:
         from config import DEFAULTS
         return preset_paint(DEFAULTS["ui"]["accent"])
 
+    def backdrop_mode(self) -> str:
+        """terminal = nothing painted (the terminal's blur / acrylic stays) | glass = translucent colour over it |
+        custom = opaque painted background."""
+        v = self.cfg.get("ui.backdrop")
+        return v if v in ("glass", "custom") else "terminal"
+
     def backdrop_paint(self) -> Paint | None:
         """The painted backdrop (Paint) or None = leave the terminal's own background alone."""
-        if self.cfg.get("ui.backdrop") != "custom":
+        mode = self.backdrop_mode()
+        if mode == "terminal":
             return None
         p = Paint.from_dict(self.cfg.get("ui.backdrop_paint") or {}, DEFAULT_BACKDROP)
-        for st in p.stops:
-            st[1] = 100
+        if mode == "custom":
+            for st in p.stops:
+                st[1] = 100
         return p
 
     def base_rgb(self) -> tuple:
         """Colour that 'alpha' mixes with: the backdrop if painted, else the terminal background."""
         bd = self.backdrop_paint()
-        if bd is None or not bd.colors():
+        if self.backdrop_mode() != "custom" or bd is None or not bd.colors():
             return TERMINAL_BG
         cols = bd.colors()
         return tuple(sum(c[i] for c in cols) // len(cols) for i in range(3))
@@ -136,8 +145,9 @@ class App:
         c = self.cfg
         if target == "backdrop":
             p = Paint.from_dict(c.get("ui.backdrop_paint") or {}, DEFAULT_BACKDROP)
-            for st in p.stops:
-                st[1] = 100
+            if self.backdrop_mode() != "glass":
+                for st in p.stops:
+                    st[1] = 100
             return p
         if target == "graph":
             p = Paint.from_dict(c.get("ui.graph_paint") or {}, DEFAULT_GRAPH)
@@ -155,7 +165,7 @@ class App:
         if target == "graph":
             self.cfg.set("ui.graph_paint", paint.to_dict())
         elif target == "backdrop":
-            self.cfg.set("ui.backdrop", "custom")
+            self.cfg.set("ui.backdrop", "glass" if self.backdrop_mode() == "glass" else "custom")
             self.cfg.set("ui.backdrop_paint", paint.to_dict())
         else:
             self.cfg.set("ui.accent", "custom")
@@ -163,7 +173,8 @@ class App:
         self.refresh_paints()
 
     def refresh_paints(self) -> None:
-        self.theme.configure(self.paint_of("accent"), self.paint_of("graph"), self.backdrop_paint())
+        self.theme.configure(self.paint_of("accent"), self.paint_of("graph"), self.backdrop_paint(),
+                             self.backdrop_mode() == "glass")
         self.dirty = True
 
     def rebuild_theme(self) -> None:

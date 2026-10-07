@@ -152,6 +152,18 @@ class Paint:
     def to_dict(self) -> dict:
         return {"mode": self.mode, "stops": [[h, int(a)] for h, a in self.stops], "speed": int(self.speed)}
 
+    def rgba_at(self, pos: float) -> tuple:
+        """Raw colour and alpha (0..100) at pos 0..1 of a solid / gradient paint, NOT mixed with any base.
+        The 'glass' backdrop uses it: the alpha becomes how much of the cell is covered."""
+        cols = [hex_to_rgb(h) for h, _ in self.stops]
+        als = [float(a) for _, a in self.stops]
+        if self.effective_mode() != "gradient" or len(cols) < 2:
+            return cols[0], als[0]
+        x = clamp(pos, 0.0, 1.0) * (len(cols) - 1)
+        i = min(int(x), len(cols) - 2)
+        f = x - i
+        return lerp(cols[i], cols[i + 1], f), als[i] + (als[i + 1] - als[i]) * f
+
     def copy(self) -> "Paint":
         return Paint(self.mode, [list(s) for s in self.stops], self.speed, self.base)
 

@@ -189,7 +189,7 @@ Customize is in the main menu and in the header. Everything applies immediately 
   Rainbow (animated, with a speed).
 - **Main color preset**: cyan, green, magenta, amber, blue or custom.
 - **Volume graph colors**: meters and waveform. Same editor plus Zones (the default green, yellow, red).
-- **Backdrop** and **Backdrop color**: see the note on alpha below.
+- **Backdrop** (terminal, glass, custom) and **Backdrop color**: see "Backdrop and blur" below.
 - **Reset colors** and **Color mode** (auto, true, 256, 16, mono).
 
 ![Solid color editor](docs/screenshots/21_editor_solid_color.png)
@@ -202,15 +202,36 @@ A UI with a gradient and a gradient volume graph, and rainbow mode:
 ![Gradient UI](docs/screenshots/24_custom_gradient_ui_and_graph.png)
 ![Rainbow UI](docs/screenshots/26_rainbow_mode.png)
 
-**About alpha.** A terminal cannot show your desktop through single characters, so alpha cannot be real
-transparency per cell. Alpha mixes a color with the **Backdrop**. With Backdrop set to `terminal` (default) that
-is the terminal's own background, assumed to be near black. With `custom` you paint a solid color or a vertical
-gradient, the app fills its background with it, and alpha blends against that. If you want real see-through,
-use Windows Terminal's own opacity or acrylic setting and keep Backdrop on `terminal`.
+**Backdrop and blur.** If you use Windows Terminal with acrylic (the blurred, see-through window), leave
+**Backdrop** on `terminal` (the default). Nothing is painted then and the blur stays exactly as you set it up in
+Windows Terminal. The three modes:
+
+- `terminal`: nothing is painted. Your terminal's own background, blur included, shows everywhere.
+- `glass`: your backdrop color (solid or a top-to-bottom gradient) is laid over the blur. **Alpha is the
+  coverage**: a colour with 100 percent covers the cell, 50 percent covers about half of it, 0 percent leaves the
+  pure blur. This is done with the shade characters, so the blur really does show through between them, and you
+  can fade a gradient out to nothing. The price is a fine dotted texture, and cells right next to text are left
+  clear so text stays readable. Needs unicode characters and color, it is skipped in ASCII or mono mode.
+- `custom`: an opaque painted background. This is the one that hides the blur. Alpha of the other colors
+  (main color, graph) mixes with it.
+
+Why a painted background hides the blur: a terminal gives every cell either "default background" (which Windows
+Terminal makes transparent) or an exact color (always opaque). A terminal cannot mix a cell color with the desktop,
+so real per-cell transparency does not exist. `glass` gets as close as it can.
+
+Alpha of the main color and the graph colors always mixes with the background color, which is the terminal's
+(assumed near black) unless the backdrop is `custom`.
+
+If gradients look like a few flat steps, your console is in 256-color mode. Set Customize > Colors > Color mode to
+`true`. Windows 10 and 11 are detected as 24-bit automatically.
 
 ![Alpha in the editor](docs/screenshots/23_editor_alpha_see_through.png)
 ![Custom backdrop](docs/screenshots/28_backdrop_gradient_with_alpha.png)
 ![Backdrop editor](docs/screenshots/29_editor_backdrop.png)
+![Glass backdrop: a gradient fading out over the blur](docs/screenshots/glass_backdrop_gradient.png)
+![Glass backdrop editor with Alpha](docs/screenshots/glass_backdrop_alpha_editor.png)
+
+The screenshots are drawn without a real blur behind them; in the terminal the gaps between the dots show it.
 
 **Layout**
 
